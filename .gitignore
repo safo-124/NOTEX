@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+build
+.env
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+.DS_Store
+
+# prisma client is generated into the repo in v7
+src/generated
