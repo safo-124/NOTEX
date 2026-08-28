@@ -1,5 +1,10 @@
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "prisma/config";
+
+// Prisma 7 does not load env files itself, and dotenv's default is `.env`.
+// Next.js keeps local secrets in `.env.local`, so load that first: given an
+// array, the earlier file wins for any key it defines.
+config({ path: [".env.local", ".env"] });
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
