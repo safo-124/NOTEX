@@ -69,8 +69,11 @@ Add a renewal hook at `/etc/letsencrypt/renewal-hooks/deploy/pgbouncer.sh` that
 repeats the two `cp` lines and runs `systemctl reload pgbouncer`, then
 `chmod +x` it. Without the hook, the app stops connecting in 90 days.
 
-No domain yet? Generate a self-signed pair instead and use `sslmode=require` in
-the connection string. Traffic is encrypted but not authenticated, so a
+No domain yet? Generate a self-signed pair instead and use `sslmode=no-verify`
+in the connection string. (`require` is not the right word here: node-postgres
+reads it as "encrypt and verify", which a self-signed certificate fails with
+`self-signed certificate`. `no-verify` keeps the encryption and drops the
+identity check.) Traffic is encrypted but not authenticated, so a
 determined attacker in the path could impersonate the server. Fine for a week,
 not fine permanently.
 
@@ -210,7 +213,8 @@ the cron line and the one in Vercel do not match.
 | --- | --- |
 | `SASL authentication failed` | `userlist.txt` regenerated after the password changed? |
 | `connection refused` on 6432 | pgbouncer running, `listen_addr = 0.0.0.0`, ufw rule present |
-| `certificate verify failed` | hostname in the URL must match the certificate; or drop to `sslmode=require` |
+| `self-signed certificate` | use `sslmode=no-verify` until you have a real certificate |
+| `certificate verify failed` | hostname in the URL must match the certificate |
 | `prepared statement already exists` | something bypassed the adapter; the app must go through `src/lib/prisma.ts` |
 | Migrations hang | Prisma Migrate needs the direct connection, not PgBouncer. Tunnel open? |
 | `too many clients` | raise `default_pool_size`, or lower `max` in `src/lib/prisma.ts` |

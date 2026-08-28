@@ -107,7 +107,10 @@ else
       -out "$TLS_DIR/server.crt" -keyout "$TLS_DIR/server.key" \
       -subj "/CN=$(hostname -f)" >/dev/null 2>&1
   fi
-  SSL_MODE="require"
+  # node-postgres reads sslmode=require as "encrypt AND verify", which a
+  # self-signed certificate fails. no-verify is its opt-out: still encrypted,
+  # server identity unchecked. A real certificate lets you use verify-full.
+  SSL_MODE="no-verify"
   DB_HOST="$(hostname -I | awk '{print $1}')"
   echo "No domain given: using a self-signed certificate. Traffic is encrypted"
   echo "but the server is not authenticated. Re-run with a domain to fix that."
