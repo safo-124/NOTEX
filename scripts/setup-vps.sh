@@ -61,10 +61,12 @@ DB_PASS="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-32)"
 sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
 DO \$\$
 BEGIN
+  -- CREATEDB is needed by \`prisma migrate dev\`, which builds a throwaway
+  -- shadow database to work out what changed.
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${DB_USER}') THEN
-    ALTER ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';
+    ALTER ROLE ${DB_USER} WITH LOGIN CREATEDB PASSWORD '${DB_PASS}';
   ELSE
-    CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}';
+    CREATE ROLE ${DB_USER} WITH LOGIN CREATEDB PASSWORD '${DB_PASS}';
   END IF;
 END
 \$\$;

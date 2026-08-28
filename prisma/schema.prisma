@@ -21,6 +21,8 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  /// scrypt hash, set when the account signs in with a password rather than a link.
+  passwordHash  String?
   timezone      String    @default("Europe/Helsinki")
   createdAt     DateTime  @default(now())
 

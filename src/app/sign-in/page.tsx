@@ -1,18 +1,16 @@
 import { redirect } from "next/navigation";
-import { auth, signIn } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
+import { auth, emailSignInEnabled } from "@/lib/auth";
+import { signUpAllowed } from "@/actions/account";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SignInForm } from "@/components/sign-in-form";
 
-export default async function SignInPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ sent?: string }>;
-}) {
+export const dynamic = "force-dynamic";
+
+export default async function SignInPage() {
   const session = await auth();
   if (session?.user) redirect("/tonight");
-  const { sent } = await searchParams;
+
+  const gate = await signUpAllowed();
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 p-6">
@@ -27,30 +25,19 @@ export default async function SignInPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
+          <CardTitle>{gate.allowed && !gate.needsCode ? "Set up your account" : "Sign in"}</CardTitle>
           <CardDescription>
-            {sent
-              ? "Check your inbox. The link signs you in and expires in 24 hours."
-              : "You get a one-time link by email. No password to remember at 3 am."}
+            {gate.allowed && !gate.needsCode
+              ? "This instance has no accounts yet, so the first one is yours."
+              : "Your schedule, notes and course files."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form
-            className="flex flex-col gap-3"
-            action={async (formData: FormData) => {
-              "use server";
-              await signIn("nodemailer", {
-                email: String(formData.get("email") ?? ""),
-                redirectTo: "/tonight",
-              });
-            }}
-          >
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required autoComplete="email" placeholder="you@example.com" />
-            </div>
-            <Button type="submit">Send me a link</Button>
-          </form>
+          <SignInForm
+            emailLinkEnabled={emailSignInEnabled}
+            signUpOpen={gate.allowed}
+            needsCode={gate.needsCode}
+          />
         </CardContent>
       </Card>
     </main>
