@@ -1,4 +1,4 @@
-import { auth, signOut } from "@/lib/auth";
+import { currentUserId, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAlertPrefs } from "@/lib/queries";
 import { channels } from "@/alerts";
@@ -10,8 +10,7 @@ import { Button } from "@/components/ui/button";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const session = await auth();
-  const userId = session!.user!.id as string;
+  const userId = await currentUserId();
   const me = await prisma.user.findUnique({
     where: { id: userId },
     select: { timezone: true, email: true },

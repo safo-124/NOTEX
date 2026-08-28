@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { seedDefaultPlan } from "@/actions/schedule";
+import { ensureDefaultPlan } from "@/lib/seed";
 import { DesktopNav, MobileNav } from "@/components/nav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/sign-in");
-  await seedDefaultPlan();
+  await ensureDefaultPlan(session.user.id);
 
   return (
     <div className="flex min-h-dvh">

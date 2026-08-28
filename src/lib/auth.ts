@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Nodemailer from "next-auth/providers/nodemailer";
@@ -63,7 +64,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 });
 
-/** Throws when there is no session, so pages and actions can assume a user. */
+/**
+ * Next renders a layout and its page in PARALLEL, so a redirect in the layout
+ * does not stop the page from running. Every page therefore checks for itself.
+ */
+export async function currentUserId() {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/sign-in");
+  return session.user.id;
+}
+
+/** Throws when there is no session, so server actions can assume a user. */
 export async function requireUser() {
   const session = await auth();
   if (!session?.user?.id) throw new Error("UNAUTHENTICATED");

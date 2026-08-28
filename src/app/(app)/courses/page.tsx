@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { getUserTimezone, weekSnapshot } from "@/lib/queries";
 import { prettyDate } from "@/lib/time";
 import { PageHead } from "@/components/page-head";
@@ -7,8 +7,7 @@ import { CourseManager } from "@/components/course-manager";
 export const dynamic = "force-dynamic";
 
 export default async function CoursesPage() {
-  const session = await auth();
-  const userId = session!.user!.id as string;
+  const userId = await currentUserId();
   const tz = await getUserTimezone(userId);
   const snap = await weekSnapshot(userId, new Date(), tz);
 

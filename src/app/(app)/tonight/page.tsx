@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { getUserTimezone, weekSnapshot } from "@/lib/queries";
 import { DAY_NAMES, formatHours, prettyDate } from "@/lib/time";
 import { PageHead } from "@/components/page-head";
@@ -11,8 +11,7 @@ import { Badge } from "@/components/ui/badge";
 export const dynamic = "force-dynamic";
 
 export default async function TonightPage() {
-  const session = await auth();
-  const userId = session!.user!.id as string;
+  const userId = await currentUserId();
   const tz = await getUserTimezone(userId);
 
   const snap = await weekSnapshot(userId, new Date(), tz);

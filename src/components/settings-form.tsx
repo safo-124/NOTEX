@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveAlertPrefs, sendTestAlert } from "@/actions/settings";
+import { findTelegramChats, saveAlertPrefs, sendTestAlert } from "@/actions/settings";
 import type { ChannelName } from "@/alerts/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,13 +33,32 @@ export function SettingsForm({
 }) {
   const [v, setV] = useState(initial);
   const [message, setMessage] = useState<string | null>(null);
+  const [chatOptions, setChatOptions] = useState<{ id: string; label: string }[]>([]);
   const [pending, startTransition] = useTransition();
 
   const set = <K extends keyof Values>(key: K, value: Values[K]) => setV((prev) => ({ ...prev, [key]: value }));
 
+  function lookupChats() {
+    startTransition(async () => {
+      setChatOptions([]);
+      const res = await findTelegramChats();
+      setMessage(res.message);
+      if (res.chats.length === 1) {
+        set("telegramChatId", res.chats[0].id);
+        setMessage(`Using ${res.chats[0].label}. Save to keep it.`);
+      } else if (res.chats.length > 1) {
+        setChatOptions(res.chats);
+      }
+    });
+  }
+
   function test(channel: ChannelName) {
     startTransition(async () => {
-      await saveAlertPrefs(v);
+      const saved = await saveAlertPrefs(v);
+      if (!saved.ok) {
+        setMessage(saved.message);
+        return;
+      }
       const res = await sendTestAlert(channel);
       setMessage(res.message);
     });
@@ -108,13 +127,43 @@ export function SettingsForm({
             onTest={() => test("telegram")}
             pending={pending}
           >
-            <Input
-              placeholder="Chat id, e.g. 123456789"
-              value={v.telegramChatId}
-              onChange={(e) => set("telegramChatId", e.target.value)}
-            />
+            <div className="flex gap-2">
+              <Input
+                placeholder="Chat id, e.g. 123456789"
+                value={v.telegramChatId}
+                onChange={(e) => set("telegramChatId", e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={lookupChats}
+                disabled={pending || !configured.telegram}
+                className="shrink-0"
+              >
+                Find mine
+              </Button>
+            </div>
+            {chatOptions.length > 1 ? (
+              <div className="flex flex-wrap gap-2">
+                {chatOptions.map((c) => (
+                  <Button
+                    key={c.id}
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      set("telegramChatId", c.id);
+                      setChatOptions([]);
+                      setMessage(`Using ${c.label}. Save to keep it.`);
+                    }}
+                  >
+                    {c.label}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
             <p className="text-xs text-[var(--muted-foreground)]">
-              Message your bot once, then read the id from /getUpdates.
+              Send your bot any message in Telegram first, then press Find mine.
             </p>
           </ChannelBlock>
 
@@ -168,8 +217,8 @@ export function SettingsForm({
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              await saveAlertPrefs(v);
-              setMessage("Saved.");
+              const res = await saveAlertPrefs(v);
+              setMessage(res.message);
             })
           }
         >

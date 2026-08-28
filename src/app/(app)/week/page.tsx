@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { getUserTimezone, weekSnapshot } from "@/lib/queries";
 import { prettyDate, shiftIsoDate } from "@/lib/time";
 import { PageHead } from "@/components/page-head";
@@ -9,8 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 export const dynamic = "force-dynamic";
 
 export default async function WeekPage() {
-  const session = await auth();
-  const userId = session!.user!.id as string;
+  const userId = await currentUserId();
   const tz = await getUserTimezone(userId);
   const snap = await weekSnapshot(userId, new Date(), tz);
 
