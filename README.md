@@ -76,10 +76,34 @@ unconfigured and the dispatcher skips it silently, so nothing else breaks.
 
 ## Files
 
-Uploads go to S3-compatible object storage (Hetzner Object Storage, or MinIO).
-Vercel's filesystem is ephemeral, so nothing is written to disk. Objects stay
-private; `GET /api/files/:id` checks ownership and hands back a 5 minute signed
-URL. Limit is 25 MB per file.
+Uploads go straight from the browser to S3-compatible object storage using a
+presigned PUT. They deliberately do NOT pass through a Server Action: Vercel
+caps any function request body at 4.5 MB, which most lecture decks exceed. The
+database row is written afterwards, and its size and type are read back from the
+bucket rather than trusted from the client. Limit is 100 MB per file.
+
+The bucket has to allow cross-origin PUT from the app. Press **Allow uploads
+from this site** once on the Files page and the app sets the CORS policy itself.
+
+Objects stay private; `GET /api/files/:id` checks ownership and hands back a
+5 minute signed URL.
+
+## Search
+
+Notes are searched with Postgres full text. `note."searchVector"` is maintained
+by `saveNote` (title weighted above body) and queried with
+`websearch_to_tsquery`. Prisma creates the column; the GIN index and the initial
+backfill are one file:
+
+```bash
+psql "$DATABASE_URL_DIRECT" -f scripts/search-index.sql
+```
+
+## Backups
+
+`scripts/backup-db.sh` dumps the database nightly, keeps 30 days on the VPS, and
+copies to object storage when the AWS CLI is available. Installation notes are
+at the top of the script.
 
 ## Layout of the code
 

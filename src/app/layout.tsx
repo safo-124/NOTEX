@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { Fraunces, Karla, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -21,20 +22,17 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-const themeScript = `
-try {
-  var stored = localStorage.getItem("notex-theme");
-  var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
-  if (dark) document.documentElement.classList.add("dark");
-} catch (e) {}
-`;
+/**
+ * The theme choice rides on a cookie, so the server can stamp it on <html>
+ * before anything renders. No pre-paint script, no flash, and nothing for
+ * React to complain about.
+ */
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const choice = (await cookies()).get("notex-theme")?.value;
+  const theme = choice === "dark" || choice === "light" ? choice : undefined;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
+    <html lang="en" data-theme={theme} suppressHydrationWarning>
       <body className={`${display.variable} ${body.variable} ${mono.variable} font-sans`}>{children}</body>
     </html>
   );

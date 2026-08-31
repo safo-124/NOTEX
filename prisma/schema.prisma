@@ -159,6 +159,8 @@ model Note {
   pinned    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+  /// Maintained by saveNote; searched through raw SQL with a GIN index.
+  searchVector Unsupported("tsvector")?
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)

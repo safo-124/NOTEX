@@ -16,6 +16,16 @@ const noteInput = z.object({
   pinned: z.coerce.boolean().default(false),
 });
 
+/** Title carries more weight than body, so a title hit ranks above a mention. */
+async function reindex(id: string) {
+  await prisma.$executeRaw`
+    UPDATE "note"
+    SET "searchVector" =
+      setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
+      setweight(to_tsvector('simple', coalesce(body, '')), 'B')
+    WHERE id = ${id}::uuid`;
+}
+
 export async function saveNote(input: z.input<typeof noteInput>) {
   const user = await requireUser();
   const data = noteInput.parse(input);
@@ -31,6 +41,7 @@ export async function saveNote(input: z.input<typeof noteInput>) {
 
   if (data.id) {
     await prisma.note.updateMany({ where: { id: data.id, userId: user.id }, data: values });
+    await reindex(data.id);
     revalidatePath("/notes");
     return data.id;
   }
@@ -39,6 +50,7 @@ export async function saveNote(input: z.input<typeof noteInput>) {
     data: { ...values, userId: user.id },
     select: { id: true },
   });
+  await reindex(row.id);
   revalidatePath("/notes");
   return row.id;
 }

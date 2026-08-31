@@ -99,26 +99,52 @@ export async function weekSnapshot(userId: string, at: Date, timeZone: string) {
 
 export async function searchNotes(userId: string, q: string, courseId?: string) {
   const term = q.trim();
+
+  // Empty search: plain listing, no full-text work at all.
+  if (!term) {
+    const rows = await prisma.note.findMany({
+      where: { userId, ...(courseId ? { courseId } : {}) },
+      include: { course: { select: { name: true, color: true } } },
+      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+      take: 200,
+    });
+    return rows.map(shapeNote);
+  }
+
+  // Full text against the GIN-indexed column. websearch_to_tsquery accepts what
+  // people actually type, quotes and OR included, without throwing on syntax.
+  const matches = courseId
+    ? await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "note"
+        WHERE "userId" = ${userId}
+          AND "courseId" = ${courseId}::uuid
+          AND "searchVector" @@ websearch_to_tsquery('simple', ${term})
+        ORDER BY ts_rank("searchVector", websearch_to_tsquery('simple', ${term})) DESC
+        LIMIT 200`
+    : await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "note"
+        WHERE "userId" = ${userId}
+          AND "searchVector" @@ websearch_to_tsquery('simple', ${term})
+        ORDER BY ts_rank("searchVector", websearch_to_tsquery('simple', ${term})) DESC
+        LIMIT 200`;
+
+  if (matches.length === 0) return [];
+
+  const order = new Map(matches.map((m, i) => [m.id, i]));
   const rows = await prisma.note.findMany({
-    where: {
-      userId,
-      ...(courseId ? { courseId } : {}),
-      ...(term
-        ? {
-            OR: [
-              { title: { contains: term, mode: "insensitive" as const } },
-              { body: { contains: term, mode: "insensitive" as const } },
-              { tags: { has: term } },
-            ],
-          }
-        : {}),
-    },
+    where: { id: { in: matches.map((m) => m.id) } },
     include: { course: { select: { name: true, color: true } } },
-    orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-    take: 200,
   });
 
-  return rows.map((n) => ({
+  return rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0)).map(shapeNote);
+}
+
+type NoteWithCourse = Awaited<ReturnType<typeof prisma.note.findMany>>[number] & {
+  course?: { name: string; color: string } | null;
+};
+
+function shapeNote(n: NoteWithCourse) {
+  return {
     id: n.id,
     title: n.title,
     body: n.body,
@@ -129,7 +155,7 @@ export async function searchNotes(userId: string, q: string, courseId?: string) 
     courseId: n.courseId,
     courseName: n.course?.name ?? null,
     courseColor: n.course?.color ?? null,
-  }));
+  };
 }
 
 export async function listFiles(userId: string, courseId?: string) {

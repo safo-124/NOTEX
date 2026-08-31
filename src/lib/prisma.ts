@@ -30,11 +30,14 @@ function getClient(): PrismaClient {
 }
 
 export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop, receiver) {
-    const value = Reflect.get(getClient(), prop, receiver);
-    return typeof value === "function" ? value.bind(getClient()) : value;
+  // No `receiver` argument: PrismaClient is itself a proxy that resolves model
+  // delegates lazily, and handing it a foreign receiver breaks that lookup.
+  get(_target, prop) {
+    const client = getClient() as unknown as Record<string | symbol, unknown>;
+    const value = client[prop];
+    return typeof value === "function" ? value.bind(client) : value;
   },
   has(_target, prop) {
-    return prop in getClient();
+    return prop in (getClient() as unknown as object);
   },
 });

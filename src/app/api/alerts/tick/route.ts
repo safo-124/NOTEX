@@ -42,6 +42,20 @@ async function run() {
     );
     if (active.length === 0) continue;
 
+    /* ---- close timers left running ---- */
+    const stale = await prisma.studySession.findMany({
+      where: { userId: prefs.userId, endedAt: null, startedAt: { lt: new Date(now.getTime() - 6 * 3600_000) } },
+      select: { id: true },
+    });
+    if (stale.length) {
+      // Six hours in, this is a timer someone forgot, not a study session.
+      // Recording zero is honest; recording six hours is not.
+      await prisma.studySession.updateMany({
+        where: { id: { in: stale.map((s) => s.id) } },
+        data: { endedAt: now, minutes: 0, note: "auto-closed: left running" },
+      });
+    }
+
     /* ---- keep the timetable fresh ---- */
     const feed = await prisma.calendarFeed.findUnique({ where: { userId: prefs.userId } });
     if (feed) {
@@ -81,7 +95,9 @@ async function run() {
         });
 
         for (const name of active) {
-          const claimed = await claim(prefs.userId, `class:${event.id}`, clock.dateIso, "class", name);
+          // The uid is stable across syncs; the row id is not, because a sync
+          // replaces the rows wholesale.
+          const claimed = await claim(prefs.userId, `class:${event.uid}`, clock.dateIso, "class", name);
           if (!claimed) continue;
           try {
             await channels[name].send(target, message);

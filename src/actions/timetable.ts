@@ -79,34 +79,27 @@ export async function syncTimetable(userId?: string) {
   });
   const byCode = new Map(courses.filter((c) => c.code).map((c) => [baseCode(c.code), c.id]));
 
-  for (const e of fresh) {
-    const courseId = byCode.get(baseCode(e.code)) ?? null;
-    const values = {
-      courseId,
-      code: baseCode(e.code),
-      title: e.title,
-      kind: e.kind,
-      groupLabel: e.group,
-      location: e.location,
-      startsAt: e.startsAt,
-      endsAt: e.endsAt,
-      updatedAt: new Date(),
-    };
-    await prisma.classEvent.upsert({
-      where: { userId_uid: { userId: id, uid: e.uid } },
-      create: { userId: id, uid: e.uid, ...values },
-      update: values,
-    });
-  }
-
-  // Drop anything upcoming that the university has removed from the feed.
-  await prisma.classEvent.deleteMany({
-    where: {
-      userId: id,
-      startsAt: { gte: horizon },
-      uid: { notIn: fresh.map((e) => e.uid) },
-    },
-  });
+  // One delete plus one insert inside a transaction, rather than an upsert per
+  // event. Every round trip from Vercel to Helsinki costs about 110ms, and a
+  // sync carries 150 events, so per-row upserts spent 20 seconds on latency.
+  await prisma.$transaction([
+    prisma.classEvent.deleteMany({ where: { userId: id, startsAt: { gte: horizon } } }),
+    prisma.classEvent.createMany({
+      data: fresh.map((e) => ({
+        userId: id,
+        uid: e.uid,
+        courseId: byCode.get(baseCode(e.code)) ?? null,
+        code: baseCode(e.code),
+        title: e.title,
+        kind: e.kind,
+        groupLabel: e.group,
+        location: e.location,
+        startsAt: e.startsAt,
+        endsAt: e.endsAt,
+      })),
+      skipDuplicates: true,
+    }),
+  ]);
 
   // Exams are dates you prepare for, not classes you attend, so they also
   // become deadlines. Keyed by the feed UID so a re-sync updates rather than
