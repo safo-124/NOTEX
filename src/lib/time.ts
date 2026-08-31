@@ -79,10 +79,24 @@ export function studyClock(at: Date, timeZone: string) {
   return { dateIso, minutes, weekday: weekdayOfIso(dateIso) };
 }
 
-/** "23:00" -> 1380, "01:15" -> 1515. Times before noon sit after midnight. */
+/**
+ * Minutes from the start of the study day.
+ *
+ * "10:00" -> 600, "23:00" -> 1380, "01:15" -> 1515. Anything before the 04:00
+ * rollover belongs to the small hours at the END of the night, which is what
+ * puts a 01:15 block after a 23:00 one instead of seventeen hours earlier.
+ */
 export function minutesOf(hhmm: string) {
   const [h, m] = hhmm.split(":").map((n) => Number(n) || 0);
-  return h < 12 ? h * 60 + m + 1440 : h * 60 + m;
+  return h < DAY_ROLLOVER_HOUR ? h * 60 + m + 1440 : h * 60 + m;
+}
+
+/** Inverse of minutesOf: 1515 -> "01:15". */
+export function labelOf(minutes: number) {
+  const wrapped = ((minutes % 1440) + 1440) % 1440;
+  const h = Math.floor(wrapped / 60);
+  const m = wrapped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 export function durationMinutes(start: string, end: string) {

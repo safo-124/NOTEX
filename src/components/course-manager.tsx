@@ -28,11 +28,13 @@ type Row = {
   code: string;
   color: string;
   focus: boolean;
+  groupFilter: string | null;
   planned: number;
   done: number;
+  logged: number;
 };
 
-type Draft = { id?: string; name: string; code: string; color: string; focus: boolean };
+type Draft = { id?: string; name: string; code: string; color: string; focus: boolean; groupFilter: string };
 
 export function CourseManager({ rows }: { rows: Row[] }) {
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -54,8 +56,11 @@ export function CourseManager({ rows }: { rows: Row[] }) {
                     </span>
                   ) : null}
                 </p>
-                <span className="shrink-0 font-mono text-xs tabular text-[var(--muted-foreground)]">
-                  {formatHours(c.done)} / {formatHours(c.planned)}
+                <span className="shrink-0 text-right font-mono text-xs tabular text-[var(--muted-foreground)]">
+                  <span className="text-[var(--foreground)]">{formatHours(c.logged)}</span> logged
+                  <span className="block text-[10px]">
+                    {formatHours(c.done)} ticked of {formatHours(c.planned)}
+                  </span>
                 </span>
               </div>
               <div className="mb-2 flex items-center justify-between font-mono text-[11px] text-[var(--muted-foreground)]">
@@ -63,12 +68,28 @@ export function CourseManager({ rows }: { rows: Row[] }) {
                 <button
                   type="button"
                   className="text-[var(--primary)]"
-                  onClick={() => setDraft({ id: c.id, name: c.name, code: c.code, color: c.color, focus: c.focus })}
+                  onClick={() =>
+                    setDraft({
+                      id: c.id,
+                      name: c.name,
+                      code: c.code,
+                      color: c.color,
+                      focus: c.focus,
+                      groupFilter: c.groupFilter ?? "",
+                    })
+                  }
                 >
                   Edit
                 </button>
               </div>
               <Progress value={pct} color={c.color} />
+              {c.logged > 0 ? (
+                <Progress
+                  value={c.planned ? (c.logged / c.planned) * 100 : 0}
+                  color={c.color}
+                  className="mt-1 h-1 opacity-70"
+                />
+              ) : null}
             </Card>
           );
         })}
@@ -77,7 +98,9 @@ export function CourseManager({ rows }: { rows: Row[] }) {
       <Button
         variant="outline"
         className="mt-3 w-full"
-        onClick={() => setDraft({ name: "", code: "", color: SWATCHES[rows.length % SWATCHES.length], focus: false })}
+        onClick={() =>
+          setDraft({ name: "", code: "", color: SWATCHES[rows.length % SWATCHES.length], focus: false, groupFilter: "" })
+        }
       >
         <Plus /> Add a course
       </Button>
@@ -102,6 +125,18 @@ export function CourseManager({ rows }: { rows: Row[] }) {
                 placeholder="COMP.SGN.100"
                 onChange={(e) => setDraft({ ...draft, code: e.target.value })}
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="c-group">Timetable group</Label>
+              <Input
+                id="c-group"
+                value={draft.groupFilter}
+                placeholder="e.g. Group 3 (blank shows every group)"
+                onChange={(e) => setDraft({ ...draft, groupFilter: e.target.value })}
+              />
+              <p className="text-xs text-[var(--muted-foreground)]">
+                Sisu publishes every small group. Name yours to hide the rest.
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Colour</Label>

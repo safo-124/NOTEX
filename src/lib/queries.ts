@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { zonedParts } from "@/lib/time";
 import { durationMinutes, minutesOf, mondayOfIso, shiftIsoDate, studyClock, weekdayOfIso } from "@/lib/time";
 
 export type BlockWithCourse = {
@@ -162,4 +163,177 @@ export async function getAlertPrefs(userId: string) {
 export async function getUserTimezone(userId: string) {
   const me = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
   return me?.timezone ?? "Europe/Helsinki";
+}
+
+export type ClassRow = {
+  id: string;
+  code: string;
+  title: string;
+  kind: string;
+  groupLabel: string | null;
+  location: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  dateIso: string;
+  startLabel: string;
+  endLabel: string;
+  courseId: string | null;
+  courseName: string | null;
+  courseColor: string | null;
+};
+
+function hhmm(at: Date, timeZone: string) {
+  const p = zonedParts(at, timeZone);
+  return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
+}
+
+function dayIso(at: Date, timeZone: string) {
+  const p = zonedParts(at, timeZone);
+  return `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+}
+
+/**
+ * Timetabled events between two dates, in the user's own timezone.
+ *
+ * A course can carry a groupFilter ("Group 3"), because Sisu publishes every
+ * small group and you only attend one.
+ */
+export async function classesBetween(userId: string, fromIso: string, toIso: string, timeZone: string) {
+  const from = new Date(`${fromIso}T00:00:00Z`);
+  const to = new Date(`${toIso}T23:59:59Z`);
+
+  const rows = await prisma.classEvent.findMany({
+    where: { userId, startsAt: { gte: new Date(from.getTime() - 86400000), lte: new Date(to.getTime() + 86400000) } },
+    include: { course: { select: { name: true, color: true, groupFilter: true } } },
+    orderBy: { startsAt: "asc" },
+  });
+
+  const kept: ClassRow[] = [];
+  for (const r of rows) {
+    const filter = r.course?.groupFilter?.trim();
+    if (filter && !(r.groupLabel ?? "").toLowerCase().includes(filter.toLowerCase())) continue;
+
+    const dateIso = dayIso(r.startsAt, timeZone);
+    if (dateIso < fromIso || dateIso > toIso) continue;
+
+    kept.push({
+      id: r.id,
+      code: r.code,
+      title: r.title,
+      kind: r.kind,
+      groupLabel: r.groupLabel,
+      location: r.location,
+      startsAt: r.startsAt,
+      endsAt: r.endsAt,
+      dateIso,
+      startLabel: hhmm(r.startsAt, timeZone),
+      endLabel: hhmm(r.endsAt, timeZone),
+      courseId: r.courseId,
+      courseName: r.course?.name ?? null,
+      courseColor: r.course?.color ?? null,
+    });
+  }
+  return kept;
+}
+
+export function groupClassesByDate(rows: ClassRow[]) {
+  const map = new Map<string, ClassRow[]>();
+  for (const r of rows) {
+    const list = map.get(r.dateIso) ?? [];
+    list.push(r);
+    map.set(r.dateIso, list);
+  }
+  return map;
+}
+
+export async function getFeed(userId: string) {
+  return prisma.calendarFeed.findUnique({ where: { userId } });
+}
+
+/* ---------------- measured time ---------------- */
+
+export async function runningSession(userId: string) {
+  return prisma.studySession.findFirst({
+    where: { userId, endedAt: null },
+    orderBy: { startedAt: "desc" },
+    include: { course: { select: { name: true, color: true } }, block: { select: { kind: true } } },
+  });
+}
+
+/** Minutes actually logged per course between two study dates. */
+export async function loggedMinutes(userId: string, fromIso: string, toIso: string) {
+  const rows = await prisma.studySession.groupBy({
+    by: ["courseId"],
+    where: { userId, onDate: { gte: fromIso, lte: toIso }, endedAt: { not: null } },
+    _sum: { minutes: true },
+  });
+  const map = new Map<string, number>();
+  for (const r of rows) map.set(r.courseId ?? "unassigned", r._sum.minutes ?? 0);
+  return map;
+}
+
+/* ---------------- deadlines ---------------- */
+
+export type DeadlineRow = {
+  id: string;
+  title: string;
+  kind: string;
+  dueAt: Date;
+  done: boolean;
+  notes: string | null;
+  fromFeed: boolean;
+  courseId: string | null;
+  courseName: string | null;
+  courseColor: string | null;
+  daysLeft: number;
+};
+
+export async function upcomingDeadlines(userId: string, withinDays = 60, includeDone = false) {
+  const now = new Date();
+  const rows = await prisma.deadline.findMany({
+    where: {
+      userId,
+      ...(includeDone ? {} : { done: false }),
+      dueAt: { gte: new Date(now.getTime() - 12 * 3600_000), lte: new Date(now.getTime() + withinDays * 86400_000) },
+    },
+    include: { course: { select: { name: true, color: true } } },
+    orderBy: { dueAt: "asc" },
+  });
+
+  return rows.map((d): DeadlineRow => ({
+    id: d.id,
+    title: d.title,
+    kind: d.kind,
+    dueAt: d.dueAt,
+    done: d.done,
+    notes: d.notes,
+    fromFeed: Boolean(d.sourceUid),
+    courseId: d.courseId,
+    courseName: d.course?.name ?? null,
+    courseColor: d.course?.color ?? null,
+    daysLeft: Math.ceil((d.dueAt.getTime() - now.getTime()) / 86400_000),
+  }));
+}
+
+export async function allDeadlines(userId: string) {
+  const rows = await prisma.deadline.findMany({
+    where: { userId },
+    include: { course: { select: { name: true, color: true } } },
+    orderBy: [{ done: "asc" }, { dueAt: "asc" }],
+    take: 200,
+  });
+  const now = Date.now();
+  return rows.map((d): DeadlineRow => ({
+    id: d.id,
+    title: d.title,
+    kind: d.kind,
+    dueAt: d.dueAt,
+    done: d.done,
+    notes: d.notes,
+    fromFeed: Boolean(d.sourceUid),
+    courseId: d.courseId,
+    courseName: d.course?.name ?? null,
+    courseColor: d.course?.color ?? null,
+    daysLeft: Math.ceil((d.dueAt.getTime() - now) / 86400_000),
+  }));
 }

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { channels, reminderMessage } from "@/alerts";
+import { deleteTelegramWebhook, getTelegramWebhookInfo, setTelegramWebhook } from "@/lib/telegram";
 import type { ChannelName } from "@/alerts";
 
 const prefsInput = z.object({
@@ -35,6 +36,8 @@ const prefsInput = z.object({
     .default(null),
   dailySummary: z.coerce.boolean().default(true),
   summaryHour: z.coerce.number().int().min(0).max(23).default(19),
+  classReminders: z.coerce.boolean().default(true),
+  classLeadMinutes: z.coerce.number().int().min(0).max(240).default(30),
   timezone: z.string().max(60).default("Europe/Helsinki"),
 });
 
@@ -59,6 +62,8 @@ export async function saveAlertPrefs(input: z.input<typeof prefsInput>) {
     whatsappTo: d.whatsappTo || null,
     dailySummary: d.dailySummary,
     summaryHour: d.summaryHour,
+    classReminders: d.classReminders,
+    classLeadMinutes: d.classLeadMinutes,
   };
 
   await prisma.alertPref.upsert({
@@ -150,4 +155,52 @@ export async function findTelegramChats() {
     };
   }
   return { ok: true, message: `Found ${chats.length} chat${chats.length === 1 ? "" : "s"}.`, chats };
+}
+
+/**
+ * Two-way Telegram: registering a webhook lets the bot receive commands as well
+ * as send reminders. Telegram will only deliver to a public HTTPS URL, so this
+ * works against the deployed app rather than localhost.
+ */
+export async function connectTelegramBot() {
+  await requireUser();
+
+  const base = process.env.AUTH_URL?.replace(/\/$/, "");
+  if (!base || base.startsWith("http://localhost")) {
+    return { ok: false, message: "Set AUTH_URL to the deployed URL first. Telegram cannot reach localhost." };
+  }
+  if (!channels.telegram.configured()) {
+    return { ok: false, message: "TELEGRAM_BOT_TOKEN is not set." };
+  }
+
+  try {
+    await setTelegramWebhook(`${base}/api/telegram/webhook`);
+    return { ok: true, message: "Connected. Send /help to your bot." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Could not register the webhook." };
+  }
+}
+
+export async function disconnectTelegramBot() {
+  await requireUser();
+  try {
+    await deleteTelegramWebhook();
+    return { ok: true, message: "Disconnected. Reminders still work; commands no longer do." };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : "Could not remove the webhook." };
+  }
+}
+
+export async function telegramBotStatus() {
+  await requireUser();
+  if (!channels.telegram.configured()) return { connected: false, detail: "No bot token." };
+  try {
+    const info = await getTelegramWebhookInfo();
+    return {
+      connected: Boolean(info.url),
+      detail: info.last_error_message ? `Last error: ${info.last_error_message}` : info.url ?? "",
+    };
+  } catch (err) {
+    return { connected: false, detail: err instanceof Error ? err.message : "" };
+  }
 }

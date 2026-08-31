@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { channels, reminderMessage, summaryMessage } from "@/alerts";
+import { channels, classMessage, reminderMessage, summaryMessage } from "@/alerts";
 import type { ChannelName } from "@/alerts";
 import { blocksForWeekday, listBlocks, weekSnapshot } from "@/lib/queries";
-import { DAY_NAMES, formatHours, minutesOf, prettyDate, studyClock } from "@/lib/time";
+import { DAY_NAMES, formatHours, minutesOf, prettyDate, studyClock, zonedParts } from "@/lib/time";
+import { syncTimetable } from "@/actions/timetable";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,6 +16,8 @@ export const maxDuration = 60;
 //
 // Every send is claimed in alert_log first, so overlapping runs, retries and a
 // wide catch-up window can never send the same reminder twice.
+const summaryMinutes = (hour: number) => hour * 60;
+
 async function run() {
   const now = new Date();
   const rows = await prisma.alertPref.findMany({
@@ -38,6 +41,58 @@ async function run() {
       (name) => flags[name] && channels[name].configured(),
     );
     if (active.length === 0) continue;
+
+    /* ---- keep the timetable fresh ---- */
+    const feed = await prisma.calendarFeed.findUnique({ where: { userId: prefs.userId } });
+    if (feed) {
+      const age = feed.lastSyncedAt ? Date.now() - feed.lastSyncedAt.getTime() : Infinity;
+      if (age > 6 * 3600_000) {
+        try {
+          await syncTimetable(prefs.userId);
+        } catch {
+          // A calendar that is briefly unreachable must not stop reminders.
+        }
+      }
+    }
+
+    /* ---- class reminders ---- */
+    if (prefs.classReminders) {
+      const soon = new Date(now.getTime() + prefs.classLeadMinutes * 60_000);
+      const upcoming = await prisma.classEvent.findMany({
+        where: { userId: prefs.userId, startsAt: { gt: now, lte: soon } },
+        include: { course: { select: { name: true, groupFilter: true } } },
+      });
+
+      for (const event of upcoming) {
+        const filter = event.course?.groupFilter?.trim();
+        if (filter && !(event.groupLabel ?? "").toLowerCase().includes(filter.toLowerCase())) continue;
+
+        const p = zonedParts(event.startsAt, tz);
+        const q = zonedParts(event.endsAt, tz);
+        const two = (n: number) => String(n).padStart(2, "0");
+        const message = classMessage({
+          courseName: event.course?.name ?? event.title,
+          code: event.code,
+          kind: event.kind,
+          start: `${two(p.hour)}:${two(p.minute)}`,
+          end: `${two(q.hour)}:${two(q.minute)}`,
+          location: event.location,
+          minutesUntil: Math.max(0, Math.round((event.startsAt.getTime() - now.getTime()) / 60_000)),
+        });
+
+        for (const name of active) {
+          const claimed = await claim(prefs.userId, `class:${event.id}`, clock.dateIso, "class", name);
+          if (!claimed) continue;
+          try {
+            await channels[name].send(target, message);
+            sent++;
+          } catch (err) {
+            failed++;
+            await markFailed(claimed, err);
+          }
+        }
+      }
+    }
 
     /* ---- block reminders ---- */
     const all = await listBlocks(prefs.userId);
@@ -69,8 +124,40 @@ async function run() {
       }
     }
 
+    /* ---- deadline warnings ---- */
+    if (prefs.dailySummary && clock.minutes >= summaryMinutes(prefs.summaryHour) && clock.minutes < summaryMinutes(prefs.summaryHour) + 60) {
+      const due = await prisma.deadline.findMany({
+        where: {
+          userId: prefs.userId,
+          done: false,
+          dueAt: { gte: now, lte: new Date(now.getTime() + 3 * 86400_000) },
+        },
+        include: { course: { select: { name: true } } },
+        orderBy: { dueAt: "asc" },
+      });
+
+      for (const d of due) {
+        const days = Math.ceil((d.dueAt.getTime() - now.getTime()) / 86400_000);
+        const message = {
+          subject: `Due in ${days} day${days === 1 ? "" : "s"}: ${d.title}`,
+          text: [d.course?.name ?? "", d.dueAt.toISOString().slice(0, 16).replace("T", " ")].filter(Boolean).join("\n"),
+        };
+        for (const name of active) {
+          const claimed = await claim(prefs.userId, `deadline:${d.id}`, clock.dateIso, "deadline", name);
+          if (!claimed) continue;
+          try {
+            await channels[name].send(target, message);
+            sent++;
+          } catch (err) {
+            failed++;
+            await markFailed(claimed, err);
+          }
+        }
+      }
+    }
+
     /* ---- evening summary ---- */
-    const summaryMin = prefs.summaryHour * 60;
+    const summaryMin = summaryMinutes(prefs.summaryHour);
     if (prefs.dailySummary && clock.minutes >= summaryMin && clock.minutes < summaryMin + 60) {
       const snap = await weekSnapshot(prefs.userId, now, tz);
       const today = snap.days.find((d) => d.dateIso === clock.dateIso);

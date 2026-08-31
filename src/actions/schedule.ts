@@ -14,6 +14,7 @@ const courseInput = z.object({
   code: z.string().max(60).default(""),
   color: z.string().max(60).default("var(--chart-1)"),
   focus: z.coerce.boolean().default(false),
+  groupFilter: z.string().max(60).nullable().default(null),
 });
 
 export async function saveCourse(input: z.input<typeof courseInput>) {
@@ -23,7 +24,13 @@ export async function saveCourse(input: z.input<typeof courseInput>) {
   if (data.id) {
     await prisma.course.updateMany({
       where: { id: data.id, userId: user.id },
-      data: { name: data.name, code: data.code, color: data.color, focus: data.focus },
+      data: {
+        name: data.name,
+        code: data.code,
+        color: data.color,
+        focus: data.focus,
+        groupFilter: data.groupFilter?.trim() || null,
+      },
     });
   } else {
     const count = await prisma.course.count({ where: { userId: user.id } });
@@ -34,6 +41,7 @@ export async function saveCourse(input: z.input<typeof courseInput>) {
         code: data.code,
         color: data.color,
         focus: data.focus,
+        groupFilter: data.groupFilter?.trim() || null,
         position: count,
       },
     });
@@ -60,7 +68,7 @@ export async function saveBlock(input: z.input<typeof blockInput>) {
   const user = await requireUser();
   const data = blockInput.parse(input);
   if (durationMinutes(data.startTime, data.endTime) === 0) {
-    throw new Error("A block must end after it starts. Times before noon count as after midnight.");
+    throw new Error("A block must end after it starts. Times before 04:00 count as the small hours of that night.");
   }
 
   const values = {

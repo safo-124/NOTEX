@@ -35,6 +35,11 @@ model User {
   files      FileAsset[]
   alertPref  AlertPref?
   alertLogs  AlertLog[]
+  feed       CalendarFeed?
+  classes    ClassEvent[]
+  // `sessions` is taken by Auth.js above.
+  studySessions StudySession[]
+  deadlines     Deadline[]
 
   @@map("user")
 }
@@ -87,13 +92,18 @@ model Course {
   color     String   @default("var(--chart-1)")
   focus     Boolean  @default(false)
   archived  Boolean  @default(false)
+  /// Only show timetable events whose group label contains this, e.g. "Group 3".
+  groupFilter String?
   position  Int      @default(0)
   createdAt DateTime @default(now())
 
-  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  blocks Block[]
-  notes  Note[]
-  files  FileAsset[]
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  blocks    Block[]
+  notes     Note[]
+  files     FileAsset[]
+  classes   ClassEvent[]
+  sessions  StudySession[]
+  deadlines Deadline[]
 
   @@index([userId])
   @@map("course")
@@ -110,10 +120,11 @@ model Block {
   kind      String   @default("Study block")
   createdAt DateTime @default(now())
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  ticks  Tick[]
-  notes  Note[]
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course   Course?        @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  ticks    Tick[]
+  notes    Note[]
+  sessions StudySession[]
 
   @@index([userId, weekday])
   @@map("block")
@@ -186,6 +197,9 @@ model AlertPref {
   whatsappTo     String?
   dailySummary   Boolean  @default(true)
   summaryHour    Int      @default(19)
+  /// Lectures need more warning than a study block you start at home.
+  classReminders   Boolean @default(true)
+  classLeadMinutes Int     @default(30)
   updatedAt      DateTime @default(now()) @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -210,4 +224,86 @@ model AlertLog {
 
   @@unique([userId, dedupeKey, onDate, kind, channel])
   @@map("alert_log")
+}
+
+/// The Sisu calendar share link, re-read on a schedule rather than imported once.
+model CalendarFeed {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  url          String
+  lastSyncedAt DateTime?
+  lastStatus   String?
+  eventCount   Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("calendar_feed")
+}
+
+/// A real timetabled event: lecture, exercise, small group, exam.
+model ClassEvent {
+  id         String   @id @default(uuid())
+  userId     String
+  courseId   String?
+  uid        String
+  code       String
+  title      String
+  kind       String   @default("Class")
+  groupLabel String?
+  location   String?
+  startsAt   DateTime
+  endsAt     DateTime
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, uid])
+  @@index([userId, startsAt])
+  @@map("class_event")
+}
+
+/// Time actually spent, as opposed to time planned. A row with no endedAt is
+/// the running timer; there is at most one of those per user.
+model StudySession {
+  id        String    @id @default(uuid())
+  userId    String
+  courseId  String?
+  blockId   String?
+  onDate    String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  minutes   Int       @default(0)
+  note      String?
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  block  Block?  @relation(fields: [blockId], references: [id], onDelete: SetNull)
+
+  @@index([userId, onDate])
+  @@index([userId, endedAt])
+  @@map("study_session")
+}
+
+/// Something with a date attached that you have to be ready for.
+model Deadline {
+  id        String    @id @default(uuid())
+  userId    String
+  courseId  String?
+  title     String
+  kind      String    @default("assignment")
+  dueAt     DateTime
+  done      Boolean   @default(false)
+  notes     String?
+  /// Set when the row came from the Sisu feed, so re-syncing updates it.
+  sourceUid String?
+  createdAt DateTime  @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, sourceUid])
+  @@index([userId, dueAt])
+  @@map("deadline")
 }

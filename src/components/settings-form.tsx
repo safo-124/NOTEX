@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { findTelegramChats, saveAlertPrefs, sendTestAlert } from "@/actions/settings";
+import {
+  connectTelegramBot,
+  disconnectTelegramBot,
+  findTelegramChats,
+  saveAlertPrefs,
+  sendTestAlert,
+} from "@/actions/settings";
 import type { ChannelName } from "@/alerts/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +27,8 @@ type Values = {
   whatsappTo: string;
   dailySummary: boolean;
   summaryHour: number;
+  classReminders: boolean;
+  classLeadMinutes: number;
   timezone: string;
 };
 
@@ -86,6 +94,28 @@ export function SettingsForm({
               max={180}
               value={v.leadMinutes}
               onChange={(e) => set("leadMinutes", Number(e.target.value))}
+            />
+          </div>
+
+          <label className="flex items-center justify-between gap-4 text-sm">
+            <span>
+              Remind me about lectures too
+              <span className="block text-xs text-[var(--muted-foreground)]">
+                From the imported timetable, with more warning than a study block.
+              </span>
+            </span>
+            <Switch checked={v.classReminders} onCheckedChange={(x) => set("classReminders", x)} />
+          </label>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="classLead">Minutes before a lecture</Label>
+            <Input
+              id="classLead"
+              type="number"
+              min={0}
+              max={240}
+              value={v.classLeadMinutes}
+              onChange={(e) => set("classLeadMinutes", Number(e.target.value))}
             />
           </div>
 
@@ -165,6 +195,42 @@ export function SettingsForm({
             <p className="text-xs text-[var(--muted-foreground)]">
               Send your bot any message in Telegram first, then press Find mine.
             </p>
+
+            <div className="mt-1 flex flex-wrap items-center gap-2 rounded-md bg-[var(--muted)] p-2.5">
+              <span className="text-xs text-[var(--muted-foreground)]">
+                Two-way: reply to the bot with /tonight, /go, /done, /note.
+              </span>
+              <div className="ml-auto flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pending || !configured.telegram}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const res = await connectTelegramBot();
+                      setMessage(res.message);
+                    })
+                  }
+                >
+                  Connect
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending || !configured.telegram}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const res = await disconnectTelegramBot();
+                      setMessage(res.message);
+                    })
+                  }
+                >
+                  Disconnect
+                </Button>
+              </div>
+            </div>
           </ChannelBlock>
 
           <ChannelBlock

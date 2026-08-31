@@ -1,10 +1,20 @@
 import Link from "next/link";
 import { currentUserId } from "@/lib/auth";
-import { getUserTimezone, weekSnapshot } from "@/lib/queries";
+import {
+  allDeadlines,
+  classesBetween,
+  getUserTimezone,
+  runningSession,
+  upcomingDeadlines,
+  weekSnapshot,
+} from "@/lib/queries";
 import { DAY_NAMES, formatHours, prettyDate } from "@/lib/time";
 import { PageHead } from "@/components/page-head";
 import { LiveStatus } from "@/components/live-status";
 import { TickButton } from "@/components/tick-button";
+import { ClassList } from "@/components/class-list";
+import { DeadlineBoard } from "@/components/deadline-board";
+import { RunningSession, StartButton } from "@/components/session-timer";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -17,6 +27,13 @@ export default async function TonightPage() {
   const snap = await weekSnapshot(userId, new Date(), tz);
   const today = snap.days.find((d) => d.dateIso === snap.clock.dateIso);
   const blocks = today?.blocks ?? [];
+  const classes = await classesBetween(userId, snap.clock.dateIso, snap.clock.dateIso, tz);
+  const [running, soon, everyDeadline] = await Promise.all([
+    runningSession(userId),
+    upcomingDeadlines(userId, 60),
+    allDeadlines(userId),
+  ]);
+  const courseOptions = snap.courses.map((c) => ({ id: c.id, name: c.name, color: c.color }));
 
   const nightCourses = [
     ...new Set(blocks.filter((b) => b.startTime >= "20:00" || b.startTime < "12:00").map((b) => b.courseName)),
@@ -32,6 +49,25 @@ export default async function TonightPage() {
       <div className="mb-5">
         <LiveStatus blocks={blocks} timeZone={tz} />
       </div>
+
+      {running ? (
+        <RunningSession
+          startedAt={running.startedAt.toISOString()}
+          courseName={running.course?.name ?? running.block?.kind ?? "Study"}
+          color={running.course?.color ?? "var(--primary)"}
+        />
+      ) : null}
+
+      <DeadlineBoard soon={soon.slice(0, 5)} all={everyDeadline} courses={courseOptions} />
+
+      {classes.length ? (
+        <section className="mb-6">
+          <h2 className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+            On campus today
+          </h2>
+          <ClassList rows={classes} />
+        </section>
+      ) : null}
 
       <div className="flex flex-col gap-2.5">
         {blocks.map((b) => (
@@ -57,13 +93,16 @@ export default async function TonightPage() {
                 </p>
               ) : null}
             </div>
-            <TickButton
-              blockId={b.id}
-              onDate={b.dateIso}
-              done={b.done}
-              label={b.courseName}
-              color={b.courseColor}
-            />
+            <div className="flex shrink-0 items-center gap-2">
+              {running ? null : <StartButton blockId={b.id} />}
+              <TickButton
+                blockId={b.id}
+                onDate={b.dateIso}
+                done={b.done}
+                label={b.courseName}
+                color={b.courseColor}
+              />
+            </div>
           </Card>
         ))}
 

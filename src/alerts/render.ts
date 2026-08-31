@@ -40,3 +40,25 @@ export function summaryMessage(input: {
     ].join("\n"),
   };
 }
+
+export function classMessage(input: {
+  courseName: string;
+  code: string;
+  kind: string;
+  start: string;
+  end: string;
+  location: string | null;
+  minutesUntil: number;
+}): OutboundMessage {
+  const when = input.minutesUntil <= 0 ? "starting now" : `in ${input.minutesUntil} min`;
+  return {
+    subject: `${input.kind}: ${input.courseName} ${when}`,
+    text: [
+      `${input.start} to ${input.end}`,
+      `${input.courseName} [${input.code}]`,
+      input.location ?? "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  };
+}
