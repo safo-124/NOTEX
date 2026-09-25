@@ -1,10 +1,20 @@
 import Link from "next/link";
 import { currentUserId } from "@/lib/auth";
-import { getUserTimezone } from "@/lib/queries";
+import { getUserTimezone, listCourses } from "@/lib/queries";
 import { examPlan } from "@/lib/exam-plan";
-import { DAY_NAMES, formatHours, prettyDate, shiftIsoDate, studyClock, weekdayOfIso } from "@/lib/time";
+import { DEFAULT_PREP_DAYS, DEFAULT_PREP_HOURS } from "@/lib/planner";
+import {
+  DAY_NAMES,
+  formatHours,
+  localInputOf,
+  prettyDate,
+  shiftIsoDate,
+  studyClock,
+  weekdayOfIso,
+} from "@/lib/time";
 import { PageHead } from "@/components/page-head";
 import { ExamPrepCard } from "@/components/exam-prep-card";
+import { AddExamButton } from "@/components/exam-editor";
 import { Card } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +26,8 @@ export default async function ExamsPage() {
   const userId = await currentUserId();
   const tz = await getUserTimezone(userId);
   const now = new Date();
-  const plan = await examPlan(userId, tz, now);
+  const [plan, courseRows] = await Promise.all([examPlan(userId, tz, now), listCourses(userId)]);
+  const courses = courseRows.map((c) => ({ id: c.id, name: c.name, code: c.code }));
   const today = studyClock(now, tz).dateIso;
 
   const when = (at: Date) =>
@@ -37,16 +48,20 @@ export default async function ExamsPage() {
             ? `${plan.exams.length} exam${plan.exams.length === 1 ? "" : "s"} to prepare for`
             : "No exams coming up"
         }
+        action={
+          <AddExamButton
+            courses={courses}
+            defaultDueAt={localInputOf(new Date(now.getTime() + 14 * 86400_000), tz).slice(0, 11) + "09:00"}
+            prepHours={DEFAULT_PREP_HOURS}
+            prepDays={DEFAULT_PREP_DAYS}
+          />
+        }
       />
 
       {plan.exams.length === 0 ? (
         <Card className="mb-6 p-5 text-sm text-[var(--muted-foreground)]">
-          Exams you are registered for in Sisu arrive here on the next sync. You can also add one by hand under
-          Due soon on{" "}
-          <Link href="/tonight" className="underline">
-            Tonight
-          </Link>
-          , with the kind set to Exam.
+          Exams you are registered for in Sisu arrive here on the next sync. For anything Sisu does not list, press
+          Add exam.
         </Card>
       ) : (
         <div className="mb-8 flex flex-col gap-3">
@@ -54,6 +69,10 @@ export default async function ExamsPage() {
             <ExamPrepCard
               key={e.id}
               id={e.id}
+              courseId={e.courseId}
+              courses={courses}
+              fromFeed={e.fromFeed}
+              dueLocal={localInputOf(e.startsAt, tz)}
               title={e.title}
               courseName={e.courseName}
               courseColor={e.courseColor}

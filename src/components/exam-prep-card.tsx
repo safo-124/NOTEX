@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveExamPrep, toggleDeadlineDone } from "@/actions/deadlines";
+import { toggleDeadlineDone } from "@/actions/deadlines";
+import { ExamEditor, type ExamCourse } from "@/components/exam-editor";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 
 export type ExamCardProps = {
   id: string;
+  courseId: string;
+  courses: ExamCourse[];
+  fromFeed: boolean;
+  /** datetime-local value in the user's timezone, for the editor. */
+  dueLocal: string;
   title: string;
   courseName: string;
   courseColor: string;
@@ -32,9 +35,6 @@ const hours = (minutes: number) => `${Math.round((minutes / 60) * 10) / 10} h`;
 
 export function ExamPrepCard(props: ExamCardProps) {
   const [editing, setEditing] = useState(false);
-  const [prepHours, setPrepHours] = useState(String(props.prepHours));
-  const [prepDays, setPrepDays] = useState(String(props.prepDays));
-  const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const target = Math.max(1, props.targetMinutes);
@@ -92,7 +92,7 @@ export function ExamPrepCard(props: ExamCardProps) {
 
       <div className="mt-3 flex gap-2">
         <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-          Adjust
+          Edit
         </Button>
         <Button
           variant="ghost"
@@ -104,69 +104,21 @@ export function ExamPrepCard(props: ExamCardProps) {
         </Button>
       </div>
 
-      <Modal open={editing} onClose={() => setEditing(false)} title={`Prepare for ${props.courseName}`}>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`hours-${props.id}`}>Hours of preparation</Label>
-              <Input
-                id={`hours-${props.id}`}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={300}
-                value={prepHours}
-                onChange={(e) => setPrepHours(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`days-${props.id}`}>Start this many days before</Label>
-              <Input
-                id={`days-${props.id}`}
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={90}
-                value={prepDays}
-                onChange={(e) => setPrepDays(e.target.value)}
-              />
-            </div>
-          </div>
-          <p className="text-xs text-[var(--muted-foreground)]">
-            Hours you log with the timer on this course count toward the target. The plan fills your study blocks
-            to match; it never adds blocks of its own.
-          </p>
-
-          {message ? <p className="text-sm text-[var(--destructive)]">{message}</p> : null}
-
-          <div className="flex gap-2">
-            <Button
-              className="flex-1"
-              disabled={pending}
-              onClick={() =>
-                startTransition(async () => {
-                  const res = await saveExamPrep({
-                    id: props.id,
-                    prepHours: Number(prepHours),
-                    prepDays: Number(prepDays),
-                  });
-                  if (!res.ok) {
-                    setMessage(res.message);
-                    return;
-                  }
-                  setMessage(null);
-                  setEditing(false);
-                })
-              }
-            >
-              Save
-            </Button>
-            <Button variant="ghost" onClick={() => setEditing(false)} disabled={pending}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <ExamEditor
+        open={editing}
+        onClose={() => setEditing(false)}
+        courses={props.courses}
+        initial={{
+          id: props.id,
+          courseId: props.courseId,
+          title: props.title,
+          dueAt: props.dueLocal,
+          location: props.location ?? "",
+          prepHours: String(props.prepHours),
+          prepDays: String(props.prepDays),
+          fromFeed: props.fromFeed,
+        }}
+      />
     </Card>
   );
 }

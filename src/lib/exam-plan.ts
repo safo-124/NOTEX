@@ -24,6 +24,8 @@ export type ExamCard = {
   prepHours: number;
   prepDays: number;
   customTarget: boolean;
+  /** Came from the Sisu feed, so Sisu owns its date and room. */
+  fromFeed: boolean;
   loggedMinutes: number;
   plannedMinutes: number;
   targetMinutes: number;
@@ -193,6 +195,7 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
       prepHours,
       prepDays,
       customTarget: row.prepHours !== null || row.prepDays !== null,
+      fromFeed: Boolean(row.sourceUid),
       loggedMinutes: exam.loggedMinutes,
       plannedMinutes: p.plannedMinutes,
       targetMinutes: exam.prepMinutes,

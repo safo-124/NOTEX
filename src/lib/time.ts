@@ -138,3 +138,21 @@ export function prettyDate(iso: string) {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${d} ${months[m - 1]} ${y}`;
 }
+
+/**
+ * A datetime-local value ("2026-10-13T13:00") read in the user's timezone.
+ * `new Date(value)` would read it in the SERVER's zone, which is UTC on Vercel.
+ */
+export function parseLocalInput(value: string, timeZone: string) {
+  const m = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const at = zonedToUtc(m[1], Number(m[2]) * 60 + Number(m[3]), timeZone);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** Inverse of parseLocalInput, for filling a datetime-local field. */
+export function localInputOf(at: Date, timeZone: string) {
+  const p = zonedParts(at, timeZone);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${isoDate(p.year, p.month, p.day)}T${two(p.hour)}:${two(p.minute)}`;
+}
