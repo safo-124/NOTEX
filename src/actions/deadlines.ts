@@ -51,3 +51,21 @@ export async function deleteDeadline(id: string) {
   await prisma.deadline.deleteMany({ where: { id, userId: user.id } });
   revalidatePath("/", "layout");
 }
+
+const prepInput = z.object({
+  id: z.string().uuid(),
+  prepHours: z.coerce.number().int().min(0, "Hours cannot be negative.").max(300, "300 hours at most."),
+  prepDays: z.coerce.number().int().min(1, "Start at least a day before.").max(90, "90 days at most."),
+});
+
+/** How much preparation an exam gets and when it starts. The planner does the rest. */
+export async function saveExamPrep(input: z.input<typeof prepInput>) {
+  const user = await requireUser();
+  const parsed = prepInput.safeParse(input);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Check the fields." };
+
+  const { id, prepHours, prepDays } = parsed.data;
+  await prisma.deadline.updateMany({ where: { id, userId: user.id, kind: "exam" }, data: { prepHours, prepDays } });
+  revalidatePath("/", "layout");
+  return { ok: true, message: "Saved." };
+}

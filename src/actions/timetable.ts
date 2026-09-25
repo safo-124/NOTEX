@@ -108,7 +108,7 @@ export async function syncTimetable(userId?: string) {
     const courseId = byCode.get(baseCode(e.code)) ?? null;
     const values = {
       courseId,
-      title: `${baseCode(e.code)} exam`,
+      title: `${baseCode(e.code)} ${e.examLabel ?? "exam"}`,
       kind: "exam",
       dueAt: e.startsAt,
       notes: e.location,

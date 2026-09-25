@@ -74,6 +74,31 @@ set `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN` and
 `WHATSAPP_TEMPLATE_NAME`. Until those exist the channel reports itself
 unconfigured and the dispatcher skips it silently, so nothing else breaks.
 
+## Exam prep
+
+Sisu puts every exam you are registered for in the calendar feed, one event per
+sitting, named "Exam 13.10.2026", "Midterm ...", "Retake exam ..." and so on.
+Each sync turns those into deadlines of kind `exam`, keyed by the feed UID so a
+moved exam moves here too.
+
+`src/lib/planner.ts` then decides what the weekly blocks are for. It never adds
+blocks; it reassigns them. For the earliest open sitting of each course:
+
+- the target is `prepHours` (default 20) minus the hours the timer has already
+  logged on that course inside the window;
+- the window opens `prepDays` (default 14) before the exam and closes eight hours
+  before it starts, so the last deep block before a morning exam is not planned;
+- each exam paces its target evenly across the block time in its window. A block
+  goes to an exam that is behind its pace, or whose window is closing, choosing
+  the one that needs the largest share of what it has left. Anything else keeps
+  its usual course. If overlapping exams still come up short, the short one is
+  re-paced to start faster and the plan is redone.
+
+It is recomputed on every request, so a missed night spreads over the ones left,
+and a target that cannot fit is shown as hours short on the Exams page instead of
+being dropped. Tonight, reminders and the Telegram commands all use the planned
+course. Ticking an exam off moves the plan to that course's next sitting.
+
 ## Files
 
 Uploads go straight from the browser to S3-compatible object storage using a

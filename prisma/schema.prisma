@@ -300,6 +300,10 @@ model Deadline {
   notes     String?
   /// Set when the row came from the Sisu feed, so re-syncing updates it.
   sourceUid String?
+  /// Exams only: hours of preparation wanted, and how many days before the
+  /// exam that preparation starts. Null falls back to the planner's defaults.
+  prepHours Int?
+  prepDays  Int?
   createdAt DateTime  @default(now())
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)

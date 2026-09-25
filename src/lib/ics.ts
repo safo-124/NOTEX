@@ -18,7 +18,16 @@ export type IcsEvent = {
   endsAt: Date;
   /// Sisu writes exams as "CODE, Course name, Exam 13.10.2026 - ...".
   isExam: boolean;
+  /// "exam", "midterm", "retake exam": what the implementation calls itself.
+  examLabel: string | null;
 };
+
+/**
+ * Implementation names Sisu uses for sittings you prepare for. Anchored to the
+ * start, so "Lectures + exercises + exam 20.10.-31.12.2025" stays a lecture.
+ */
+const EXAM_NAME =
+  /^(final exam|mid-term exam|retake exam|uusintatentti|midterm|mid-term|re-exam|retake|resit|tentti|välikoe|exam)(?![a-zäö])/i;
 
 function unfold(text: string) {
   // RFC 5545 folds long lines by starting the continuation with a space or tab.
@@ -84,10 +93,11 @@ function parseSummary(summary: string) {
     kind = "Small group";
   }
 
-  const isExam = /^exam\b/i.test((parts[2] ?? "").trim());
+  const examMatch = (parts[2] ?? "").trim().match(EXAM_NAME);
+  const isExam = Boolean(examMatch);
   if (isExam) kind = "Exam";
 
-  return { code, title, kind, group, isExam };
+  return { code, title, kind, group, isExam, examLabel: examMatch ? examMatch[1].toLowerCase() : null };
 }
 
 /** Course codes carry an implementation suffix: ITC.CEE.300-19 -> ITC.CEE.300 */
@@ -116,7 +126,7 @@ export function parseIcs(text: string): IcsEvent[] {
     if (!endsAt || Number.isNaN(endsAt.getTime())) endsAt = new Date(startsAt.getTime() + 2 * 3600_000);
 
     const summary = unescape(readProp(block, "SUMMARY") ?? "");
-    const { code, title, kind, group, isExam } = parseSummary(summary);
+    const { code, title, kind, group, isExam, examLabel } = parseSummary(summary);
 
     events.push({
       uid,
@@ -128,6 +138,7 @@ export function parseIcs(text: string): IcsEvent[] {
       startsAt,
       endsAt,
       isExam,
+      examLabel,
     });
   }
 

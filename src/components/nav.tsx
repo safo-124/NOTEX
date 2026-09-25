@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, CalendarDays, FileText, Moon, Settings, Layers } from "lucide-react";
+import { BookOpen, CalendarDays, FileText, GraduationCap, Moon, Settings, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { href: "/tonight", label: "Tonight", icon: Moon },
   { href: "/week", label: "Week", icon: CalendarDays },
+  { href: "/exams", label: "Exams", icon: GraduationCap },
   { href: "/notes", label: "Notes", icon: BookOpen },
   { href: "/files", label: "Files", icon: FileText },
   { href: "/settings", label: "Alerts", icon: Settings },
@@ -25,7 +26,7 @@ export function DesktopNav() {
         </p>
         <p className="font-[family-name:var(--font-display)] text-xl font-semibold tracking-tight">NOTEX</p>
       </div>
-      {[...items.slice(0, 4), ...desktopExtra, items[4]].map(({ href, label, icon: Icon }) => {
+      {[...items.slice(0, 5), ...desktopExtra, items[5]].map(({ href, label, icon: Icon }) => {
         const active = path === href || path.startsWith(href + "/");
         return (
           <Link
@@ -50,7 +51,7 @@ export function DesktopNav() {
 export function MobileNav() {
   const path = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-[var(--border)] bg-[var(--card)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-[var(--border)] bg-[var(--card)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
       {items.map(({ href, label, icon: Icon }) => {
         const active = path === href || path.startsWith(href + "/");
         return (

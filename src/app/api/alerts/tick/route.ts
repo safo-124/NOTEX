@@ -5,6 +5,7 @@ import type { ChannelName } from "@/alerts";
 import { blocksForWeekday, listBlocks, weekSnapshot } from "@/lib/queries";
 import { DAY_NAMES, formatHours, minutesOf, prettyDate, studyClock, zonedParts } from "@/lib/time";
 import { syncTimetable } from "@/actions/timetable";
+import { applyPlan, examPlan, type ExamPlan } from "@/lib/exam-plan";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -111,16 +112,24 @@ async function run() {
     }
 
     /* ---- block reminders ---- */
+    // Only built when a reminder is actually due, since most ticks send nothing.
+    let plan: ExamPlan | null | undefined;
+    const planFor = async () => {
+      if (plan === undefined) plan = await examPlan(prefs.userId, tz, now).catch(() => null);
+      return plan;
+    };
+
     const all = await listBlocks(prefs.userId);
-    for (const block of blocksForWeekday(all, clock.weekday)) {
-      const startMin = minutesOf(block.startTime);
+    for (const template of blocksForWeekday(all, clock.weekday)) {
+      const startMin = minutesOf(template.startTime);
       const fireAt = startMin - prefs.leadMinutes;
       if (clock.minutes < fireAt || clock.minutes >= startMin) continue;
+      const [block] = applyPlan(clock.dateIso, [template], await planFor());
 
       const message = reminderMessage({
         courseName: block.courseName,
-        courseCode: block.courseCode,
-        kind: block.kind,
+        courseCode: block.examTitle ? "" : block.courseCode,
+        kind: block.examTitle ? `Prep for ${block.examTitle}` : block.kind,
         start: block.startTime,
         end: block.endTime,
         minutesUntil: Math.max(0, startMin - clock.minutes),
@@ -178,6 +187,7 @@ async function run() {
       const snap = await weekSnapshot(prefs.userId, now, tz);
       const today = snap.days.find((d) => d.dateIso === clock.dateIso);
       if (today && today.blocks.length) {
+        const tonight = applyPlan(clock.dateIso, today.blocks, await planFor());
         let planned = 0;
         let done = 0;
         for (const [, v] of snap.perCourse) {
@@ -186,9 +196,9 @@ async function run() {
         }
         const message = summaryMessage({
           dateLabel: `${DAY_NAMES[clock.weekday]} ${prettyDate(clock.dateIso)}`,
-          lines: today.blocks.map(
+          lines: tonight.map(
             (b) =>
-              `${b.startTime}-${b.endTime}  ${b.courseName} (${formatHours(b.minutes)})${b.done ? " done" : ""}`,
+              `${b.startTime}-${b.endTime}  ${b.courseName}${b.examTitle ? " exam prep" : ""} (${formatHours(b.minutes)})${b.done ? " done" : ""}`,
           ),
           doneMinutes: done,
           plannedMinutes: planned,

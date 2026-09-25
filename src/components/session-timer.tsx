@@ -68,7 +68,16 @@ export function RunningSession({
 }
 
 /** Per-block start button. */
-export function StartButton({ blockId, disabled }: { blockId: string; disabled?: boolean }) {
+export function StartButton({
+  blockId,
+  courseId,
+  disabled,
+}: {
+  blockId: string;
+  /** Set when the exam plan has given this block to another course tonight. */
+  courseId?: string | null;
+  disabled?: boolean;
+}) {
   const [pending, startTransition] = useTransition();
   return (
     <Button
@@ -76,7 +85,7 @@ export function StartButton({ blockId, disabled }: { blockId: string; disabled?:
       size="icon"
       aria-label="Start a timer for this block"
       disabled={pending || disabled}
-      onClick={() => startTransition(async () => void (await startSession({ blockId })))}
+      onClick={() => startTransition(async () => void (await startSession({ blockId, courseId })))}
     >
       <Play />
     </Button>

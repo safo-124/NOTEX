@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendTelegram, webhookSecret } from "@/lib/telegram";
 import { blocksForWeekday, listBlocks } from "@/lib/queries";
+import { applyPlan, examPlan } from "@/lib/exam-plan";
 import { DAY_NAMES, formatHours, minutesOf, studyClock } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -29,8 +30,9 @@ async function resolveUser(chatId: string) {
 
 async function tonightPlan(userId: string, tz: string) {
   const clock = studyClock(new Date(), tz);
-  const all = await listBlocks(userId);
-  const blocks = blocksForWeekday(all, clock.weekday);
+  const [all, plan] = await Promise.all([listBlocks(userId), examPlan(userId, tz).catch(() => null)]);
+  // Close to an exam, the plan decides what each block is for, timer included.
+  const blocks = applyPlan(clock.dateIso, blocksForWeekday(all, clock.weekday), plan);
 
   const ticks = await prisma.tick.findMany({
     where: { userId, onDate: clock.dateIso },
@@ -71,7 +73,9 @@ async function handle(text: string, user: { id: string; timezone: string }) {
     }
     lines.push("", "_Study_");
     blocks.forEach((b, i) => {
-      lines.push(`${i + 1}. ${b.startTime}-${b.endTime}  ${b.courseName}${done.has(b.id) ? "  done" : ""}`);
+      lines.push(
+        `${i + 1}. ${b.startTime}-${b.endTime}  ${b.courseName}${b.examTitle ? " exam prep" : ""}${done.has(b.id) ? "  done" : ""}`,
+      );
     });
     return lines.join("\n");
   }

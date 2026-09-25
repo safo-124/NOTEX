@@ -99,6 +99,25 @@ export function labelOf(minutes: number) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/**
+ * The instant at which a study-day clock time happens: `minutes` counts from
+ * midnight of `dateIso`, so 1515 on 2026-10-12 is 01:15 on 2026-10-13. Two
+ * passes settle the zone offset, including across a DST change.
+ */
+export function zonedToUtc(dateIso: string, minutes: number, timeZone: string) {
+  const day = shiftIsoDate(dateIso, Math.floor(minutes / 1440));
+  const [y, m, d] = day.split("-").map(Number);
+  const rest = ((minutes % 1440) + 1440) % 1440;
+  const wall = Date.UTC(y, m - 1, d, Math.floor(rest / 60), rest % 60);
+
+  let at = wall;
+  for (let i = 0; i < 2; i++) {
+    const p = zonedParts(new Date(at), timeZone);
+    at += wall - Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+  }
+  return new Date(at);
+}
+
 export function durationMinutes(start: string, end: string) {
   const d = minutesOf(end) - minutesOf(start);
   return d > 0 ? d : 0;

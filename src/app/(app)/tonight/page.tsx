@@ -8,6 +8,7 @@ import {
   upcomingDeadlines,
   weekSnapshot,
 } from "@/lib/queries";
+import { applyPlan, examPlan } from "@/lib/exam-plan";
 import { DAY_NAMES, formatHours, prettyDate } from "@/lib/time";
 import { PageHead } from "@/components/page-head";
 import { LiveStatus } from "@/components/live-status";
@@ -26,13 +27,15 @@ export default async function TonightPage() {
 
   const snap = await weekSnapshot(userId, new Date(), tz);
   const today = snap.days.find((d) => d.dateIso === snap.clock.dateIso);
-  const blocks = today?.blocks ?? [];
-  const classes = await classesBetween(userId, snap.clock.dateIso, snap.clock.dateIso, tz);
-  const [running, soon, everyDeadline] = await Promise.all([
+  const [classes, running, soon, everyDeadline, plan] = await Promise.all([
+    classesBetween(userId, snap.clock.dateIso, snap.clock.dateIso, tz),
     runningSession(userId),
     upcomingDeadlines(userId, 60),
     allDeadlines(userId),
+    examPlan(userId, tz),
   ]);
+  // Close to an exam, the plan decides what tonight's blocks are for.
+  const blocks = applyPlan(snap.clock.dateIso, today?.blocks ?? [], plan);
   const courseOptions = snap.courses.map((c) => ({ id: c.id, name: c.name, color: c.color }));
 
   const nightCourses = [
@@ -85,16 +88,23 @@ export default async function TonightPage() {
                 {b.courseName}
               </p>
               <p className="text-xs text-[var(--muted-foreground)]">
-                {b.kind} · {formatHours(b.minutes)}
+                {b.examTitle ? (
+                  <Link href="/exams" className="underline decoration-dotted underline-offset-2">
+                    Prep for {b.examTitle}
+                  </Link>
+                ) : (
+                  b.kind
+                )}{" "}
+                · {formatHours(b.minutes)}
               </p>
-              {b.courseCode ? (
+              {b.courseCode && !b.examTitle ? (
                 <p className="font-mono text-[11px]" style={{ color: b.courseColor }}>
                   {b.courseCode}
                 </p>
               ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {running ? null : <StartButton blockId={b.id} />}
+              {running ? null : <StartButton blockId={b.id} courseId={b.examTitle ? b.courseId : null} />}
               <TickButton
                 blockId={b.id}
                 onDate={b.dateIso}
