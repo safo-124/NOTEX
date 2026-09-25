@@ -20,6 +20,8 @@ const SWATCHES = [
   "var(--chart-4)",
   "var(--chart-5)",
   "var(--chart-6)",
+  "var(--chart-7)",
+  "var(--chart-8)",
 ];
 
 type Row = {
@@ -140,7 +142,7 @@ export function CourseManager({ rows }: { rows: Row[] }) {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Colour</Label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {SWATCHES.map((s) => (
                   <button
                     key={s}
