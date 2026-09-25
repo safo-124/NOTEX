@@ -81,13 +81,21 @@ sitting, named "Exam 13.10.2026", "Midterm ...", "Retake exam ..." and so on.
 Each sync turns those into deadlines of kind `exam`, keyed by the feed UID so a
 moved exam moves here too.
 
+Exams can also be added by hand on the Exams page. Sittings of one exam share a
+name (Sisu repeats it for every retake), so the planner prepares for the earliest
+open one; differently named exams of a course, such as two midterms, are planned
+separately.
+
 `src/lib/planner.ts` then decides what the weekly blocks are for. It never adds
-blocks; it reassigns them. For the earliest open sitting of each course:
+blocks; it reassigns them, and skips any block that clashes with a class. For
+each exam:
 
 - the target is `prepHours` (default 20) minus the hours the timer has already
-  logged on that course inside the window;
+  logged inside the window on that course, counted toward the course's next
+  exam only;
 - the window opens `prepDays` (default 14) before the exam and closes eight hours
   before it starts, so the last deep block before a morning exam is not planned;
+- the blocks in the 24 hours before an exam are its final review, always;
 - each exam paces its target evenly across the block time in its window. A block
   goes to an exam that is behind its pace, or whose window is closing, choosing
   the one that needs the largest share of what it has left. Anything else keeps

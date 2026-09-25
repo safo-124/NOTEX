@@ -10,7 +10,8 @@
  *     logged for that course inside the prep window;
  *   - it may use blocks from `prepDays` before the exam up to a sleep buffer
  *     before it starts, so the night before a 09:00 exam is not a deep block;
- *   - its pace line spreads `need` evenly over the block time in that window.
+ *   - its pace line spreads `need` evenly over the block time in that window;
+ *   - the blocks in the day before it are its final review, always.
  *
  * Walking the blocks in time order, a block goes to an exam that is behind its
  * pace line, or whose window is closing; of those, the one that needs the
@@ -24,6 +25,12 @@ export const DEFAULT_PREP_HOURS = 20;
 export const DEFAULT_PREP_DAYS = 14;
 /** No block may end closer than this to the start of an exam it prepares for. */
 export const SLEEP_BUFFER_HOURS = 8;
+/**
+ * Blocks in the last day before an exam are its final review, whatever the
+ * pace says: an exam that met its target early should still be the last
+ * thing studied before it, not whichever course happens to be behind.
+ */
+export const FINAL_REVIEW_HOURS = 24;
 
 export type PlanSlot = {
   blockId: string;
@@ -98,10 +105,20 @@ function pass(ordered: PlanSlot[], exams: PlanExam[], boost: Map<string, number>
     };
   });
 
+  // Final review first. Exams are in date order, so where the last day before
+  // one exam overlaps another's, the earlier exam keeps it.
+  const reserved = new Map<PlanSlot, (typeof state)[number]>();
+  for (const s of state) {
+    const from = s.exam.startsAt.getTime() - FINAL_REVIEW_HOURS * 3600_000;
+    for (const slot of ordered) {
+      if (s.fits(slot) && slot.startsAt.getTime() >= from && !reserved.has(slot)) reserved.set(slot, s);
+    }
+  }
+
   const plan: PlannedSlot[] = [];
   for (const slot of ordered) {
-    let best: (typeof state)[number] | null = null;
-    let bestPressure = 0;
+    let best: (typeof state)[number] | null = reserved.get(slot) ?? null;
+    let bestPressure = best ? Infinity : 0;
 
     for (const s of state) {
       if (!s.fits(slot)) continue;

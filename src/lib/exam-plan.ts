@@ -72,8 +72,11 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
     orderBy: { dueAt: "asc" },
   });
 
-  // Sisu lists every sitting: the first exam and its retakes. Prepare for the
-  // earliest one still open; ticking it off (taken or skipped) moves on.
+  // Sisu lists every sitting: the first exam and its retakes, all under the
+  // same name. Prepare for the earliest one still open; ticking it off (taken
+  // or skipped) moves on. Differently named exams of one course, such as two
+  // midterms, are separate exams and each gets its own preparation.
+  const sittingKey = (row: (typeof rows)[number]) => `${row.courseId}|${row.title.trim().toLowerCase()}`;
   const chosen = new Map<string, (typeof rows)[number]>();
   const later = new Map<string, { id: string; startsAt: Date }[]>();
   const unlinked: ExamPlan["unlinked"] = [];
@@ -84,8 +87,9 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
       }
       continue;
     }
-    if (!chosen.has(row.courseId)) chosen.set(row.courseId, row);
-    else later.set(row.courseId, [...(later.get(row.courseId) ?? []), { id: row.id, startsAt: row.dueAt }]);
+    const key = sittingKey(row);
+    if (!chosen.has(key)) chosen.set(key, row);
+    else later.set(key, [...(later.get(key) ?? []), { id: row.id, startsAt: row.dueAt }]);
   }
   const picked = [...chosen.values()];
 
@@ -93,7 +97,7 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
   if (picked.length === 0) return empty;
 
   const clock = studyClock(now, timeZone);
-  const lastExam = picked[picked.length - 1].dueAt;
+  const lastExam = new Date(Math.max(...picked.map((r) => r.dueAt.getTime())));
   const lastDateIso = studyClock(lastExam, timeZone).dateIso;
 
   const settings = picked.map((row) => ({
@@ -107,7 +111,7 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
     .map((s) => windowStartIso(s.prepDays, s.row.dueAt))
     .reduce((a, b) => (a < b ? a : b));
 
-  const [blocks, ticks, sessions] = await Promise.all([
+  const [blocks, ticks, sessions, classes] = await Promise.all([
     listBlocks(userId),
     prisma.tick.findMany({
       where: { userId, onDate: { gte: clock.dateIso, lte: lastDateIso } },
@@ -120,9 +124,21 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
         onDate: { gte: earliestWindow },
         courseId: { in: picked.map((r) => r.courseId as string) },
       },
-      select: { courseId: true, onDate: true, minutes: true },
+      select: { courseId: true, onDate: true, startedAt: true, minutes: true },
+    }),
+    prisma.classEvent.findMany({
+      where: { userId, startsAt: { lt: lastExam }, endsAt: { gt: now } },
+      select: { code: true, groupLabel: true, startsAt: true, endsAt: true, course: { select: { groupFilter: true } } },
     }),
   ]);
+
+  // Blocks that clash with a class you attend are not free for exam prep.
+  const attended = classes.filter((c) => {
+    if (/^cancel+ed/i.test(c.code)) return false;
+    const filter = c.course?.groupFilter?.trim();
+    return !filter || (c.groupLabel ?? "").toLowerCase().includes(filter.toLowerCase());
+  });
+  const clashes = (startsAt: Date, endsAt: Date) => attended.some((c) => c.startsAt < endsAt && c.endsAt > startsAt);
 
   // Every dated block from tonight to the last exam that has not already been
   // done or already ended.
@@ -135,7 +151,7 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
       if (b.weekday !== weekday || b.minutes <= 0 || done.has(`${dateIso}|${b.id}`)) continue;
       const startsAt = zonedToUtc(dateIso, minutesOf(b.startTime), timeZone);
       const endsAt = zonedToUtc(dateIso, minutesOf(b.startTime) + b.minutes, timeZone);
-      if (endsAt <= now) continue;
+      if (endsAt <= now || clashes(startsAt, endsAt)) continue;
       slots.push({
         blockId: b.id,
         dateIso,
@@ -149,10 +165,17 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
     }
   }
 
+  // A logged session counts toward the next exam of its course only, so two
+  // midterms of one course never both claim the same hours.
+  const nextExamOf = (courseId: string | null, at: Date) =>
+    picked
+      .filter((r) => r.courseId === courseId && r.dueAt > at)
+      .reduce<(typeof picked)[number] | null>((a, b) => (a && a.dueAt <= b.dueAt ? a : b), null);
+
   const exams: PlanExam[] = settings.map(({ row, prepHours, prepDays }) => {
     const fromIso = windowStartIso(prepDays, row.dueAt);
     const logged = sessions
-      .filter((s) => s.courseId === row.courseId && s.onDate >= fromIso)
+      .filter((s) => s.onDate >= fromIso && nextExamOf(s.courseId, s.startedAt)?.id === row.id)
       .reduce((sum, s) => sum + s.minutes, 0);
     return {
       id: row.id,
@@ -201,7 +224,7 @@ export async function examPlan(userId: string, timeZone: string, now = new Date(
       targetMinutes: exam.prepMinutes,
       shortfallMinutes: p.shortfallMinutes,
       windowStart: p.windowStart,
-      laterSittings: later.get(row.courseId as string) ?? [],
+      laterSittings: later.get(sittingKey(row)) ?? [],
     };
   });
 
