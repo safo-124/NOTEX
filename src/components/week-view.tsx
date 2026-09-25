@@ -20,6 +20,8 @@ type Block = {
   courseColor: string;
   dateIso: string;
   done: boolean;
+  /** Set when the exam plan gives this block to an exam on this date. */
+  examTitle?: string | null;
 };
 
 export function WeekView(props: {

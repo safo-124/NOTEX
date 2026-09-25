@@ -21,6 +21,8 @@ type Block = {
   courseColor: string;
   dateIso: string;
   done: boolean;
+  /** Set when the exam plan gives this block to an exam on this date. */
+  examTitle?: string | null;
 };
 
 type Day = { dateIso: string; weekday: number; blocks: Block[] };
@@ -412,9 +414,15 @@ export function WeekCalendar({
                           boxShadow: clash ? "inset 0 0 0 1px var(--destructive)" : undefined,
                         }}
                       >
-                        <p className="truncate text-[11px] font-semibold leading-tight">{b.courseName}</p>
+                        <p
+                          className="truncate text-[11px] font-semibold leading-tight"
+                          title={b.examTitle ? `Prep for ${b.examTitle}` : undefined}
+                        >
+                          {b.courseName}
+                        </p>
                         {height >= 30 ? (
                           <p className="truncate font-mono text-[10px] tabular text-[var(--muted-foreground)]">
+                            {b.examTitle ? "exam prep · " : ""}
                             {labelOf(item.start)} to {labelOf(item.end)}
                           </p>
                         ) : null}

@@ -57,10 +57,13 @@ export async function ticksForWeek(userId: string, mondayIso: string) {
   });
 }
 
-/** Everything the schedule screens need, in three queries. */
-export async function weekSnapshot(userId: string, at: Date, timeZone: string) {
+/**
+ * Everything the schedule screens need, in three queries. `weekOf` is any
+ * date in the week to show; the current week when it is left out.
+ */
+export async function weekSnapshot(userId: string, at: Date, timeZone: string, weekOf?: string) {
   const clock = studyClock(at, timeZone);
-  const mondayIso = mondayOfIso(clock.dateIso);
+  const mondayIso = mondayOfIso(weekOf ?? clock.dateIso);
 
   const [allBlocks, tickRows, courses] = await Promise.all([
     listBlocks(userId),

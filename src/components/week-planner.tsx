@@ -22,6 +22,8 @@ type Block = {
   courseColor: string;
   dateIso: string;
   done: boolean;
+  /** Set when the exam plan gives this block to an exam on this date. */
+  examTitle?: string | null;
 };
 
 /** The plain list: easier to edit precisely, and readable on a small phone. */
@@ -83,6 +85,7 @@ export function WeekPlanner({
                     >
                       {b.courseName}
                       <span className="ml-2 text-xs text-[var(--muted-foreground)]">
+                        {b.examTitle ? `prep for ${b.examTitle} · ` : ""}
                         {formatHours(b.minutes)}
                       </span>
                     </span>
