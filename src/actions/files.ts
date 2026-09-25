@@ -75,6 +75,16 @@ export async function enableBucketUploads() {
     await allowBrowserUploads(origin);
     return { ok: true, message: `The bucket now accepts uploads from ${origin}.` };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : "Could not set the bucket policy." };
+    const detail = err instanceof Error ? err.message : "";
+    // MinIO has no per-bucket CORS API; the allowed origin is set at startup
+    // with MINIO_API_CORS_ALLOW_ORIGIN instead.
+    if (/NotImplemented|not implemented|MethodNotAllowed/i.test(detail)) {
+      return {
+        ok: false,
+        message:
+          "This server sets CORS at startup rather than per bucket. Re-run scripts/setup-minio.sh with the app URL.",
+      };
+    }
+    return { ok: false, message: detail || "Could not set the bucket policy." };
   }
 }

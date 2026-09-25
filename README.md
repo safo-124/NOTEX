@@ -88,6 +88,22 @@ from this site** once on the Files page and the app sets the CORS policy itself.
 Objects stay private; `GET /api/files/:id` checks ownership and hands back a
 5 minute signed URL.
 
+### Self-hosting storage with MinIO
+
+`scripts/setup-minio.sh` runs MinIO on the VPS behind Caddy with a real TLS
+certificate, creates the bucket and an application key, and writes the five
+`S3_*` values to `/root/notex-minio-credentials`:
+
+```bash
+sudo bash scripts/setup-minio.sh s3.example.com https://your-app.vercel.app
+```
+
+The hostname must resolve to the VPS (a free DuckDNS subdomain is fine), because
+browsers will not upload from an HTTPS page to a plain-HTTP or self-signed
+endpoint. MinIO has no per-bucket CORS API, so the **Allow uploads** button does
+not apply: the allowed origin is fixed when the container starts. Re-run the
+script if the app URL changes. It replaces `/etc/caddy/Caddyfile`.
+
 ## Search
 
 Notes are searched with Postgres full text. `note."searchVector"` is maintained
