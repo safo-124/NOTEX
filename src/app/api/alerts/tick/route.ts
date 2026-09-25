@@ -21,6 +21,11 @@ const summaryMinutes = (hour: number) => hour * 60;
 
 async function run() {
   const now = new Date();
+
+  // Housekeeping runs for every account, whether or not it has alerts on.
+  const synced = await refreshTimetables(now);
+  await closeForgottenTimers(now);
+
   const rows = await prisma.alertPref.findMany({
     where: { enabled: true },
     include: { user: { select: { id: true, email: true, timezone: true } } },
@@ -42,33 +47,6 @@ async function run() {
       (name) => flags[name] && channels[name].configured(),
     );
     if (active.length === 0) continue;
-
-    /* ---- close timers left running ---- */
-    const stale = await prisma.studySession.findMany({
-      where: { userId: prefs.userId, endedAt: null, startedAt: { lt: new Date(now.getTime() - 6 * 3600_000) } },
-      select: { id: true },
-    });
-    if (stale.length) {
-      // Six hours in, this is a timer someone forgot, not a study session.
-      // Recording zero is honest; recording six hours is not.
-      await prisma.studySession.updateMany({
-        where: { id: { in: stale.map((s) => s.id) } },
-        data: { endedAt: now, minutes: 0, note: "auto-closed: left running" },
-      });
-    }
-
-    /* ---- keep the timetable fresh ---- */
-    const feed = await prisma.calendarFeed.findUnique({ where: { userId: prefs.userId } });
-    if (feed) {
-      const age = feed.lastSyncedAt ? Date.now() - feed.lastSyncedAt.getTime() : Infinity;
-      if (age > 6 * 3600_000) {
-        try {
-          await syncTimetable(prefs.userId);
-        } catch {
-          // A calendar that is briefly unreachable must not stop reminders.
-        }
-      }
-    }
 
     /* ---- class reminders ---- */
     if (prefs.classReminders) {
@@ -218,7 +196,38 @@ async function run() {
     }
   }
 
-  return { ok: true, users: rows.length, sent, failed, at: now.toISOString() };
+  return { ok: true, users: rows.length, synced, sent, failed, at: now.toISOString() };
+}
+
+/** Every six hours per feed, so new exams and moved lectures show up on their own. */
+async function refreshTimetables(now: Date) {
+  const due = await prisma.calendarFeed.findMany({
+    where: { OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: new Date(now.getTime() - 6 * 3600_000) } }] },
+    select: { userId: true },
+  });
+
+  let synced = 0;
+  for (const feed of due) {
+    try {
+      // A failed fetch still stamps lastSyncedAt, so an unreachable calendar
+      // is retried in six hours rather than on every tick.
+      if ((await syncTimetable(feed.userId)).ok) synced++;
+    } catch {
+      // A calendar that is briefly unreachable must not stop reminders.
+    }
+  }
+  return synced;
+}
+
+/**
+ * Six hours in, this is a timer someone forgot, not a study session.
+ * Recording zero is honest; recording six hours is not.
+ */
+async function closeForgottenTimers(now: Date) {
+  await prisma.studySession.updateMany({
+    where: { endedAt: null, startedAt: { lt: new Date(now.getTime() - 6 * 3600_000) } },
+    data: { endedAt: now, minutes: 0, note: "auto-closed: left running" },
+  });
 }
 
 /** Write the log row first; a unique violation means someone already sent it. */
